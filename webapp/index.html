@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Side Rendered Game</title>
+    <style>
+        body {
+            background-color: #182029;
+            color: #ffffff;
+            font-family:Arial, Helvetica, sans-serif;
+        }
+
+        .main-canvas {
+            background-color: black;
+            width: 800px;
+            height: 600px;
+        }
+    </style>
+</head>
+<body>
+    <div>
+        <div><h1>Server Side Rendered Game</h1></div>
+        <div>
+            <canvas class="main-canvas"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const socket = new WebSocket("http://127.0.0.1:8080/connect");
+        /**
+         * @param {MessageEvent} event
+        */
+        socket.onmessage = (event) => {
+            console.log("Server: " + event.data)
+        }
+
+        /**
+         * @param {Event} event
+         */
+        socket.onopen = (event) => {
+            console.log(event)
+            socket.send("hello");
+        }
+
+    </script>
+</body>
+</html>
