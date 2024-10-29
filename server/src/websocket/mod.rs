@@ -1,6 +1,7 @@
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use actix_web::{
+    cookie::time::Instant,
     rt::{self, time},
     web, Error, HttpRequest, HttpResponse,
 };
@@ -23,14 +24,14 @@ pub async fn connect(req: HttpRequest, stream: web::Payload) -> Result<HttpRespo
     rt::spawn(async move {
         while let Some(msg) = stream.next().await {
             match msg {
-                Ok(Message::Text(_text)) => {
-                    let value = TestValue {
-                        pixels: vec![1, 2, 3],
-                    };
+                // Ok(Message::Text(_text)) => {
+                //     let value = TestValue {
+                //         pixels: (0..600 * 800 * 3).map(|i| i % 255).collect(),
+                //     };
 
-                    let message = serde_json::to_string(&value).unwrap();
-                    let _ = tx1.send(message).await.unwrap();
-                }
+                //     let message = serde_json::to_string(&value).unwrap();
+                //     let _ = tx1.send(message).await.unwrap();
+                // }
                 _ => {}
             }
         }
@@ -41,14 +42,27 @@ pub async fn connect(req: HttpRequest, stream: web::Payload) -> Result<HttpRespo
         let mut interval = time::interval(Duration::from_micros(1_000_000));
         loop {
             interval.tick().await;
-            let _ = tx2.send("test".to_owned()).await;
+
+            let value: TestValue = TestValue {
+                pixels: (0..300 * 150 * 4)
+                    .map(|i| {
+                        (i * SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs()
+                            % 255) as i32
+                    })
+                    .collect(),
+            };
+
+            let message = serde_json::to_string(&value).unwrap();
+            let _ = tx2.send(message).await;
         }
     });
 
     rt::spawn(async move {
         println!("listen");
         while let Some(msg) = rx.recv().await {
-            println!("Message to send: {}", msg);
             session.text(msg).await.unwrap();
         }
 
