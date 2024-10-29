@@ -13,8 +13,6 @@
 
         .main-canvas {
             background-color: black;
-            width: 800px;
-            height: 600px;
         }
     </style>
 </head>
@@ -22,17 +20,34 @@
     <div>
         <div><h1>Server Side Rendered Game</h1></div>
         <div>
-            <canvas class="main-canvas"></canvas>
+            <canvas class="main-canvas" id="canvas"></canvas>
         </div>
     </div>
 
     <script>
         const socket = new WebSocket("http://127.0.0.1:8080/connect");
+        const canvas = document.getElementById("canvas");
+        /** @type {CanvasRenderingContext2D} */
+        const ctx = canvas.getContext("2d");
+
+
         /**
          * @param {MessageEvent} event
         */
         socket.onmessage = (event) => {
-            console.log("Server: " + event.data)
+            console.log("Recieved message");
+            const data = JSON.parse(event.data);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            console.log(canvas.width, canvas.height);
+            
+            imageData.data.set(new Uint8ClampedArray(data["pixels"]))
+
+            console.log(data["pixels"]);
+            
+ 
+
+            // update canvas
+            ctx.putImageData(imageData, 0, 0);
         }
 
         /**
@@ -40,9 +55,8 @@
          */
         socket.onopen = (event) => {
             console.log(event)
-            socket.send("hello");
         }
 
-    </script>
+    </script> 
 </body>
 </html>
