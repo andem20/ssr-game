@@ -1,40 +1,59 @@
-use actix_web::{rt, web, Error, HttpRequest, HttpResponse};
-use actix_ws::AggregatedMessage;
+use std::time::Duration;
+
+use actix_web::{
+    rt::{self, time},
+    web, Error, HttpRequest, HttpResponse,
+};
+use actix_ws::Message;
 use futures_util::StreamExt as _;
+use serde::Serialize;
+use tokio::sync::mpsc;
+
+#[derive(Serialize)]
+pub struct TestValue {
+    pixels: Vec<i32>,
+}
 
 pub async fn connect(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
-    let (res, mut session, stream) = actix_ws::handle(&req, stream)?;
+    let (res, mut session, mut stream) = actix_ws::handle(&req, stream)?;
 
-    let mut stream = stream
-        .aggregate_continuations()
-        // aggregate continuation frames up to 1MiB
-        .max_continuation_size(2_usize.pow(20));
+    let (tx, mut rx) = mpsc::channel::<String>(100);
 
-    // start task but don't wait for it
+    let tx1 = tx.clone();
     rt::spawn(async move {
-        // receive messages from websocket
         while let Some(msg) = stream.next().await {
             match msg {
-                Ok(AggregatedMessage::Text(text)) => {
-                    // echo text message
-                    session.text(text).await.unwrap();
-                }
+                Ok(Message::Text(_text)) => {
+                    let value = TestValue {
+                        pixels: vec![1, 2, 3],
+                    };
 
-                Ok(AggregatedMessage::Binary(bin)) => {
-                    // echo binary message
-                    session.binary(bin).await.unwrap();
+                    let message = serde_json::to_string(&value).unwrap();
+                    let _ = tx1.send(message).await.unwrap();
                 }
-
-                Ok(AggregatedMessage::Ping(msg)) => {
-                    // respond to PING frame with PONG frame
-                    session.pong(&msg).await.unwrap();
-                }
-
                 _ => {}
             }
         }
     });
 
-    // respond immediately with response connected to WS session
+    let tx2 = tx.clone();
+    rt::spawn(async move {
+        let mut interval = time::interval(Duration::from_micros(1_000_000));
+        loop {
+            interval.tick().await;
+            let _ = tx2.send("test".to_owned()).await;
+        }
+    });
+
+    rt::spawn(async move {
+        println!("listen");
+        while let Some(msg) = rx.recv().await {
+            println!("Message to send: {}", msg);
+            session.text(msg).await.unwrap();
+        }
+
+        println!("closed")
+    });
+
     Ok(res)
 }
