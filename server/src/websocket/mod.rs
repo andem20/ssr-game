@@ -1,73 +1,98 @@
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{
+    thread,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use actix_web::{
-    cookie::time::Instant,
-    rt::{self, time},
+    rt::{self},
     web, Error, HttpRequest, HttpResponse,
 };
-use actix_ws::Message;
+use actix_ws::{Message, MessageStream, Session};
 use futures_util::StreamExt as _;
 use serde::Serialize;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, Receiver, Sender};
+
+const SIZE: usize = 400 * 300 * 4;
 
 #[derive(Serialize)]
 pub struct TestValue {
-    pixels: Vec<i32>,
+    pixels: Vec<u8>,
 }
 
 pub async fn connect(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
-    let (res, mut session, mut stream) = actix_ws::handle(&req, stream)?;
+    let (res, session, stream) = actix_ws::handle(&req, stream)?;
 
-    let (tx, mut rx) = mpsc::channel::<String>(100);
+    let (tx, rx) = mpsc::channel::<Vec<u8>>(100);
 
     let tx1 = tx.clone();
+    receive_message(stream, tx1);
+
+    let tx2 = tx.clone();
+    game_loop(tx2);
+
+    send_message(session, rx);
+
+    Ok(res)
+}
+
+fn receive_message(mut stream: MessageStream, tx1: Sender<Vec<u8>>) {
     rt::spawn(async move {
         while let Some(msg) = stream.next().await {
             match msg {
-                // Ok(Message::Text(_text)) => {
-                //     let value = TestValue {
-                //         pixels: (0..600 * 800 * 3).map(|i| i % 255).collect(),
-                //     };
-
-                //     let message = serde_json::to_string(&value).unwrap();
-                //     let _ = tx1.send(message).await.unwrap();
-                // }
+                Ok(Message::Text(text)) => {
+                    println!("Received message: {}", text);
+                }
+                Ok(Message::Close(reason)) => {
+                    println!("Closing due to {:?}", reason);
+                    tx1.send(vec![]).await.unwrap();
+                }
                 _ => {}
             }
         }
     });
+}
 
-    let tx2 = tx.clone();
-    rt::spawn(async move {
-        let mut interval = time::interval(Duration::from_micros(1_000_000));
-        loop {
-            interval.tick().await;
+fn game_loop(tx2: mpsc::Sender<Vec<u8>>) {
+    thread::spawn(move || {
+        let mut x = 0;
+        let mut start = SystemTime::now();
+        while !tx2.is_closed() {
+            x += 1;
 
+            print_fps(&mut start, &mut x);
+
+            let epoch = UNIX_EPOCH.elapsed().unwrap().as_millis() as usize;
             let value: TestValue = TestValue {
-                pixels: (0..300 * 150 * 4)
-                    .map(|i| {
-                        (i * SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs()
-                            % 255) as i32
-                    })
-                    .collect(),
+                pixels: (0..SIZE).map(|i| (i * epoch % 255) as u8).collect(),
             };
 
-            let message = serde_json::to_string(&value).unwrap();
-            let _ = tx2.send(message).await;
+            let _ = futures::executor::block_on(tx2.send(value.pixels));
+            // thread::sleep(Duration::from_millis(1));
         }
     });
+}
 
+fn send_message(mut session: Session, mut rx: Receiver<Vec<u8>>) {
     rt::spawn(async move {
-        println!("listen");
-        while let Some(msg) = rx.recv().await {
-            session.text(msg).await.unwrap();
+        loop {
+            if let Some(msg) = rx.recv().await {
+                if msg.len() == 0 {
+                    println!("Closed");
+                    rx.close();
+                    break;
+                } else {
+                    let _ = session.binary(msg).await;
+                }
+            }
         }
-
-        println!("closed")
     });
+}
 
-    Ok(res)
+fn print_fps(start: &mut SystemTime, x: &mut i32) {
+    if start.elapsed().unwrap().as_nanos() >= 1_000_000_000 {
+        print!("{esc}c", esc = 27 as char);
+        println!("Fps: {x}");
+        *x = 0;
+        *start = SystemTime::now();
+    }
 }
