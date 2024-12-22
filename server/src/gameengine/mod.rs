@@ -1,8 +1,11 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use tokio::sync::mpsc::Sender;
 
-use crate::config;
+const DEPTH: usize = 4;
+const TICKS_PR_SECOND: u128 = 60;
+const NANOS: u128 = 1_000_000_000;
+const TICK_DURATION: u128 = NANOS / TICKS_PR_SECOND;
 
 pub trait GameEngine {
     fn start(self);
@@ -42,7 +45,7 @@ impl SsrGameEngine {
     pub fn new(dimensions: (usize, usize), tx: Sender<Vec<u8>>) -> Self {
         Self {
             dimensions,
-            buffer_size: dimensions.0 * dimensions.1 * 4, // RGBA
+            buffer_size: dimensions.0 * dimensions.1 * DEPTH,
             user_input: UserInput::new(),
             tx,
             tickables: vec![],
@@ -72,15 +75,18 @@ impl GameEngine for SsrGameEngine {
             let mut x = 0;
             let mut start = SystemTime::now();
             while !this.tx.is_closed() {
+                let s = std::time::Instant::now();
                 x += 1;
 
                 print_fps(&mut start, &mut x);
 
                 this.render();
 
-                this.offset = (this.offset + 2) % (this.dimensions().0 * 4);
+                this.offset = (this.offset + 2) % (this.dimensions().0 * DEPTH);
 
-                // thread::sleep(Duration::from_millis(1));
+                std::thread::sleep(std::time::Duration::from_nanos(
+                    (TICK_DURATION - s.elapsed().as_nanos()) as u64,
+                ));
             }
         });
     }
@@ -94,8 +100,8 @@ impl GameEngine for SsrGameEngine {
 
         for i in 100..120 {
             buffer.splice(
-                (i * 4 * self.dimensions().0) + self.offset
-                    ..(i * 4 * self.dimensions().0) + 200 + self.offset,
+                (i * DEPTH * self.dimensions().0) + self.offset
+                    ..(i * DEPTH * self.dimensions().0) + 200 + self.offset,
                 [255; 200],
             );
         }

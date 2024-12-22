@@ -1,6 +1,9 @@
+use std::u16;
+
 use actix_web::{
     rt::{self},
-    web, Error, HttpRequest, HttpResponse,
+    web::{self},
+    Error, HttpRequest, HttpResponse,
 };
 use actix_ws::{Message, MessageStream, Session};
 use futures_util::StreamExt as _;
@@ -30,7 +33,12 @@ fn handle_receive_message(mut stream: MessageStream, tx1: Sender<Vec<u8>>) {
         while let Some(msg) = stream.next().await {
             match msg {
                 Ok(Message::Text(text)) => {
-                    println!("Received message: {}", text);
+                    println!("Received text: {}", text);
+                }
+                Ok(Message::Binary(bytes)) => {
+                    let x = *bytes.get(0).unwrap() as u16 | (*bytes.get(1).unwrap() as u16) << 8;
+                    let y = *bytes.get(2).unwrap() as u16 | (*bytes.get(3).unwrap() as u16) << 8;
+                    println!("Received binary: {x}, {y}");
                 }
                 Ok(Message::Close(reason)) => {
                     println!("Closing due to {:?}", reason);
