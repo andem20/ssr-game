@@ -5,8 +5,8 @@ Small game using server side rendering.
 
 ### Server
 - [x] Create web server supporting websockets
-- [ ] Create simple gameengine
-  - [ ] At least 60 fps
+- [x] Create simple gameengine
+  - [x] At least 60 fps
   - [ ] Basic drawing functions
 - [x] Send pixels to client
 
