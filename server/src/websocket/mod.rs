@@ -1,4 +1,4 @@
-use std::u16;
+use std::{sync::mpsc::SyncSender, u16};
 
 use actix_web::{
     rt::{self},
@@ -15,12 +15,13 @@ pub async fn connect(req: HttpRequest, stream: web::Payload) -> Result<HttpRespo
     let (res, session, stream) = actix_ws::handle(&req, stream)?;
 
     let (tx, rx) = mpsc::channel::<Vec<u8>>(100);
+    let (user_input_tx, user_input_rx) = mpsc::channel::<Vec<u16>>(100);
 
     let tx1 = tx.clone();
-    handle_receive_message(stream, tx1);
+    handle_receive_message(stream, tx1, user_input_tx);
 
     let tx2 = tx.clone();
-    let gameengine = SsrGameEngine::new((800, 600), tx2);
+    let gameengine = SsrGameEngine::new((800, 600), tx2, user_input_rx);
     gameengine.start();
 
     handle_send_message(session, rx);
@@ -28,7 +29,11 @@ pub async fn connect(req: HttpRequest, stream: web::Payload) -> Result<HttpRespo
     Ok(res)
 }
 
-fn handle_receive_message(mut stream: MessageStream, tx1: Sender<Vec<u8>>) {
+fn handle_receive_message(
+    mut stream: MessageStream,
+    tx1: Sender<Vec<u8>>,
+    user_input_tx: Sender<Vec<u16>>,
+) {
     rt::spawn(async move {
         while let Some(msg) = stream.next().await {
             match msg {
@@ -38,7 +43,7 @@ fn handle_receive_message(mut stream: MessageStream, tx1: Sender<Vec<u8>>) {
                 Ok(Message::Binary(bytes)) => {
                     let x = *bytes.get(0).unwrap() as u16 | (*bytes.get(1).unwrap() as u16) << 8;
                     let y = *bytes.get(2).unwrap() as u16 | (*bytes.get(3).unwrap() as u16) << 8;
-                    println!("Received binary: {x}, {y}");
+                    user_input_tx.send(vec![x, y]).await.unwrap();
                 }
                 Ok(Message::Close(reason)) => {
                     println!("Closing due to {:?}", reason);

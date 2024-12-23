@@ -1,11 +1,14 @@
 use std::time::SystemTime;
 
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 const DEPTH: usize = 4;
 const TICKS_PR_SECOND: u128 = 60;
 const NANOS: u128 = 1_000_000_000;
 const TICK_DURATION: u128 = NANOS / TICKS_PR_SECOND;
+
+const HEIGHT: usize = 20;
+const WIDTH: usize = 50;
 
 pub trait GameEngine {
     fn start(self);
@@ -27,8 +30,11 @@ pub struct SsrGameEngine {
     buffer_size: usize,
     user_input: UserInput,
     tx: Sender<Vec<u8>>,
+    rx: Receiver<Vec<u16>>,
     tickables: Vec<Box<dyn Tickable>>,
     offset: usize,
+    x: usize,
+    y: usize,
 }
 
 impl UserInput {
@@ -42,14 +48,17 @@ impl UserInput {
 }
 
 impl SsrGameEngine {
-    pub fn new(dimensions: (usize, usize), tx: Sender<Vec<u8>>) -> Self {
+    pub fn new(dimensions: (usize, usize), tx: Sender<Vec<u8>>, rx: Receiver<Vec<u16>>) -> Self {
         Self {
             dimensions,
             buffer_size: dimensions.0 * dimensions.1 * DEPTH,
             user_input: UserInput::new(),
             tx,
+            rx,
             tickables: vec![],
             offset: 0,
+            x: 0,
+            y: 0,
         }
     }
 
@@ -68,17 +77,28 @@ impl SsrGameEngine {
 
 impl GameEngine for SsrGameEngine {
     fn start(mut self) {
-        // Listen for userinput
-        // Create thread
         std::thread::spawn(move || {
             let this = &mut self;
             let mut x = 0;
             let mut start = SystemTime::now();
+
             while !this.tx.is_closed() {
                 let s = std::time::Instant::now();
                 x += 1;
 
                 print_fps(&mut start, &mut x);
+
+                while let Ok(input) = this.rx.try_recv() {
+                    if let Some(x) = input.get(0) {
+                        this.x = (&this.dimensions.0 - WIDTH).min(*x as usize);
+                    }
+
+                    if let Some(y) = input.get(1) {
+                        this.y = (&this.dimensions.1 - HEIGHT).min(*y as usize);
+                    }
+
+                    println!("Received position: {}, {}", this.x, this.y);
+                }
 
                 this.render();
 
@@ -98,11 +118,11 @@ impl GameEngine for SsrGameEngine {
     fn render(&self) {
         let mut buffer = vec![0_u8; self.buffer_size()];
 
-        for i in 100..120 {
+        for i in self.y..self.y + HEIGHT {
             buffer.splice(
-                (i * DEPTH * self.dimensions().0) + self.offset
-                    ..(i * DEPTH * self.dimensions().0) + 200 + self.offset,
-                [255; 200],
+                ((i * self.dimensions().0) + self.x) * DEPTH
+                    ..((i * self.dimensions().0) + self.x + WIDTH) * DEPTH,
+                [255; WIDTH * DEPTH],
             );
         }
 
