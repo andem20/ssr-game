@@ -1,3 +1,5 @@
+use core::f64;
+
 use actix_web::{web, App, HttpServer};
 use server::websocket;
 
@@ -8,3 +10,20 @@ async fn main() -> std::io::Result<()> {
         .run()
         .await
 }
+
+// fn main() {
+//     let radius = 10.0;
+
+//     for i in 0..10 {
+//         let angle = (i as f64 / 10.0) * f64::consts::PI;
+//         let x = f64::cos(angle);
+//         let y = f64::sin(angle);
+//         println!("({}, {})", (x * radius) as i32, (y * radius) as i32);
+//     }
+// }
+
+// x x o x x
+// x o x o x
+// x o x o x
+// x x o x x
+// x x x x x

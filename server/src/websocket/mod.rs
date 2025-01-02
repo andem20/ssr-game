@@ -1,4 +1,4 @@
-use std::{sync::mpsc::SyncSender, u16};
+use std::u16;
 
 use actix_web::{
     rt::{self},

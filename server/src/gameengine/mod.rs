@@ -118,11 +118,26 @@ impl GameEngine for SsrGameEngine {
     fn render(&self) {
         let mut buffer = vec![0_u8; self.buffer_size()];
 
-        for i in self.y..self.y + HEIGHT {
+        // for i in self.y..self.y + HEIGHT {
+        //     buffer.splice(
+        //         ((i * self.dimensions().0) + self.x) * DEPTH
+        //             ..((i * self.dimensions().0) + self.x + WIDTH) * DEPTH,
+        //         [255; WIDTH * DEPTH],
+        //     );
+        // }
+
+        let radius = 100.0;
+        let res = 20;
+
+        for i in 0..res {
+            let angle: f32 = (i as f32 / res as f32) * std::f32::consts::TAU;
+            let x = (f32::cos(angle) * radius + radius) as usize;
+            let y = (f32::sin(angle) * radius + radius) as usize;
+            let index = ((y * self.dimensions().0) + self.x + x) * DEPTH;
             buffer.splice(
-                ((i * self.dimensions().0) + self.x) * DEPTH
-                    ..((i * self.dimensions().0) + self.x + WIDTH) * DEPTH,
-                [255; WIDTH * DEPTH],
+                (((y + self.y) * self.dimensions().0) + self.x + x) * DEPTH
+                    ..(((y + self.y) * self.dimensions().0) + self.x + x + 1) * DEPTH,
+                [255; DEPTH],
             );
         }
 
