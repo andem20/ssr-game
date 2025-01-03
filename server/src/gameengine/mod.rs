@@ -97,7 +97,7 @@ impl GameEngine for SsrGameEngine {
                         this.y = (&this.dimensions.1 - HEIGHT).min(*y as usize);
                     }
 
-                    println!("Received position: {}, {}", this.x, this.y);
+                    // println!("Received position: {}, {}", this.x, this.y);
                 }
 
                 this.render();
@@ -126,19 +126,25 @@ impl GameEngine for SsrGameEngine {
         //     );
         // }
 
-        let radius = 100.0;
-        let res = 20;
+        let radius = 50;
 
-        for i in 0..res {
-            let angle: f32 = (i as f32 / res as f32) * std::f32::consts::TAU;
-            let x = (f32::cos(angle) * radius + radius) as usize;
-            let y = (f32::sin(angle) * radius + radius) as usize;
-            let index = ((y * self.dimensions().0) + self.x + x) * DEPTH;
-            buffer.splice(
-                (((y + self.y) * self.dimensions().0) + self.x + x) * DEPTH
-                    ..(((y + self.y) * self.dimensions().0) + self.x + x + 1) * DEPTH,
-                [255; DEPTH],
-            );
+        for i in 0..radius {
+            let angle = f64::asin(i as f64 / radius as f64);
+            let x = (f64::cos(angle) * radius as f64) as usize;
+
+            let filling = vec![255; x * 2 * DEPTH];
+
+            let position = ((self.y + radius + i) * self.dimensions().0) + self.x;
+            let start = (position - x) * DEPTH;
+            let end = (position + x) * DEPTH;
+
+            buffer.splice(start..end, filling.clone());
+
+            let position = ((self.y + radius - i) * self.dimensions().0) + self.x;
+            let start = (position - x) * DEPTH;
+            let end = (position + x) * DEPTH;
+
+            buffer.splice(start..end, filling);
         }
 
         let _ = futures::executor::block_on(self.tx.send(buffer));
