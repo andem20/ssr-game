@@ -73,6 +73,31 @@ impl SsrGameEngine {
     pub fn buffer_size(&self) -> usize {
         self.buffer_size
     }
+
+    fn draw_circle(&self, buffer: &mut Vec<u8>, x: usize, y: usize, radius: usize) {
+        for i in 0..radius * 2 {
+            let angle = f64::asin(i.abs_diff(radius) as f64 / radius as f64);
+            let point_x = (f64::cos(angle) * radius as f64) as usize;
+
+            let filling = vec![255; point_x * 2 * DEPTH];
+
+            let position = ((y + i) * self.dimensions().0) + x;
+            let start = (position - point_x) * DEPTH;
+            let end = (position + point_x) * DEPTH;
+
+            buffer.splice(start..end, filling);
+        }
+    }
+
+    fn draw_rect(&self, buffer: &mut Vec<u8>, x: usize, y: usize, width: usize, height: usize) {
+        for i in y..y + height {
+            buffer.splice(
+                ((i * self.dimensions().0) + x) * DEPTH
+                    ..((i * self.dimensions().0) + x + width) * DEPTH,
+                vec![255; width * DEPTH],
+            );
+        }
+    }
 }
 
 impl GameEngine for SsrGameEngine {
@@ -118,34 +143,9 @@ impl GameEngine for SsrGameEngine {
     fn render(&self) {
         let mut buffer = vec![0_u8; self.buffer_size()];
 
-        // for i in self.y..self.y + HEIGHT {
-        //     buffer.splice(
-        //         ((i * self.dimensions().0) + self.x) * DEPTH
-        //             ..((i * self.dimensions().0) + self.x + WIDTH) * DEPTH,
-        //         [255; WIDTH * DEPTH],
-        //     );
-        // }
+        self.draw_rect(&mut buffer, 10, 10, WIDTH, HEIGHT);
 
-        let radius = 50;
-
-        for i in 0..radius {
-            let angle = f64::asin(i as f64 / radius as f64);
-            let x = (f64::cos(angle) * radius as f64) as usize;
-
-            let filling = vec![255; x * 2 * DEPTH];
-
-            let position = ((self.y + radius + i) * self.dimensions().0) + self.x;
-            let start = (position - x) * DEPTH;
-            let end = (position + x) * DEPTH;
-
-            buffer.splice(start..end, filling.clone());
-
-            let position = ((self.y + radius - i) * self.dimensions().0) + self.x;
-            let start = (position - x) * DEPTH;
-            let end = (position + x) * DEPTH;
-
-            buffer.splice(start..end, filling);
-        }
+        self.draw_circle(&mut buffer, self.x, self.y, 100);
 
         let _ = futures::executor::block_on(self.tx.send(buffer));
     }
