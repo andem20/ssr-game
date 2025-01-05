@@ -13,16 +13,17 @@ const WIDTH: usize = 50;
 pub trait GameEngine {
     fn start(self);
     fn stop(&self);
-    fn tick(&self);
-    fn render(&self);
+    fn update(&mut self);
+    fn render(&mut self);
 }
 
 pub struct UserInput {
     keys: [u8; 4],
 }
 
-pub trait Tickable: Send {
-    fn tick(&self);
+pub trait Updatables: Send {
+    fn update(&self);
+    fn render(&self, buffer: &mut Vec<u8>);
 }
 
 pub struct SsrGameEngine {
@@ -31,8 +32,7 @@ pub struct SsrGameEngine {
     user_input: UserInput,
     tx: Sender<Vec<u8>>,
     rx: Receiver<Vec<u16>>,
-    tickables: Vec<Box<dyn Tickable>>,
-    offset: usize,
+    sprites: Vec<Box<dyn Updatables>>,
     x: usize,
     y: usize,
 }
@@ -55,8 +55,7 @@ impl SsrGameEngine {
             user_input: UserInput::new(),
             tx,
             rx,
-            tickables: vec![],
-            offset: 0,
+            sprites: vec![],
             x: 0,
             y: 0,
         }
@@ -74,6 +73,7 @@ impl SsrGameEngine {
         self.buffer_size
     }
 
+    #[allow(dead_code)]
     fn draw_circle(&self, buffer: &mut Vec<u8>, x: usize, y: usize, radius: usize) {
         for i in 0..radius * 2 {
             let angle = f64::asin(i.abs_diff(radius) as f64 / radius as f64);
@@ -89,6 +89,7 @@ impl SsrGameEngine {
         }
     }
 
+    #[allow(dead_code)]
     fn draw_rect(&self, buffer: &mut Vec<u8>, x: usize, y: usize, width: usize, height: usize) {
         for i in y..y + height {
             buffer.splice(
@@ -96,6 +97,13 @@ impl SsrGameEngine {
                     ..((i * self.dimensions().0) + x + width) * DEPTH,
                 vec![255; width * DEPTH],
             );
+        }
+    }
+
+    fn update_cursor_position(&mut self) {
+        while let Ok(input) = self.rx.try_recv() {
+            self.x = input.get(0).map_or(self.x, |x| *x as usize);
+            self.y = input.get(1).map_or(self.y, |y| *y as usize);
         }
     }
 }
@@ -113,21 +121,8 @@ impl GameEngine for SsrGameEngine {
 
                 print_fps(&mut start, &mut x);
 
-                while let Ok(input) = this.rx.try_recv() {
-                    if let Some(x) = input.get(0) {
-                        this.x = (&this.dimensions.0 - WIDTH).min(*x as usize);
-                    }
-
-                    if let Some(y) = input.get(1) {
-                        this.y = (&this.dimensions.1 - HEIGHT).min(*y as usize);
-                    }
-
-                    // println!("Received position: {}, {}", this.x, this.y);
-                }
-
+                this.update();
                 this.render();
-
-                this.offset = (this.offset + 2) % (this.dimensions().0 * DEPTH);
 
                 std::thread::sleep(std::time::Duration::from_nanos(
                     (TICK_DURATION - s.elapsed().as_nanos()) as u64,
@@ -140,18 +135,20 @@ impl GameEngine for SsrGameEngine {
         todo!()
     }
 
-    fn render(&self) {
+    fn render(&mut self) {
         let mut buffer = vec![0_u8; self.buffer_size()];
 
-        self.draw_rect(&mut buffer, 10, 10, WIDTH, HEIGHT);
+        self.sprites.iter().for_each(|s| s.render(&mut buffer));
 
+        // self.draw_rect(&mut buffer, 10, 10, WIDTH, HEIGHT);
         self.draw_circle(&mut buffer, self.x, self.y, 100);
 
         let _ = futures::executor::block_on(self.tx.send(buffer));
     }
 
-    fn tick(&self) {
-        todo!()
+    fn update(&mut self) {
+        self.update_cursor_position();
+        self.sprites.iter().for_each(|s| s.update());
     }
 }
 
