@@ -7,9 +7,6 @@ const TICKS_PR_SECOND: u128 = 60;
 const NANOS: u128 = 1_000_000_000;
 const TICK_DURATION: u128 = NANOS / TICKS_PR_SECOND;
 
-const HEIGHT: usize = 20;
-const WIDTH: usize = 50;
-
 pub trait GameEngine {
     fn start(self);
     fn stop(&self);
@@ -17,9 +14,49 @@ pub trait GameEngine {
     fn render(&mut self);
 }
 
-pub trait Updatables: Send {
-    fn update(&self);
-    fn render(&self, buffer: &mut Vec<u8>);
+pub trait Updatable: Send {
+    fn update(&mut self, inputs: [usize; 4]);
+    fn render(&self, buffer: &mut Vec<u8>, dimensions: (usize, usize));
+}
+
+pub struct TestSprite {
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    color: [u8; 4],
+}
+
+impl TestSprite {
+    pub fn new(x: usize, y: usize, width: usize, height: usize, color: [u8; 4]) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+            color,
+        }
+    }
+}
+
+impl Updatable for TestSprite {
+    fn update(&mut self, inputs: [usize; 4]) {
+        self.x -= inputs[0];
+        self.x += inputs[2];
+        self.y -= inputs[1];
+        self.y += inputs[3];
+    }
+
+    fn render(&self, mut buffer: &mut Vec<u8>, dimensions: (usize, usize)) {
+        draw_rect(
+            &mut buffer,
+            dimensions,
+            self.x,
+            self.y,
+            self.width,
+            self.height,
+        );
+    }
 }
 
 pub struct SsrGameEngine {
@@ -28,26 +65,25 @@ pub struct SsrGameEngine {
     keys: [usize; 4],
     tx: Sender<Vec<u8>>,
     rx: Receiver<Vec<u16>>,
-    sprites: Vec<Box<dyn Updatables>>,
+    sprites: Vec<Box<dyn Updatable>>,
     mouse_x: usize,
     mouse_y: usize,
-    test_x: usize,
-    test_y: usize,
 }
 
 impl SsrGameEngine {
     pub fn new(dimensions: (usize, usize), tx: Sender<Vec<u8>>, rx: Receiver<Vec<u16>>) -> Self {
+        let test_sprite =
+            Box::new(TestSprite::new(0, 0, 50, 20, [255, 0, 0, 255])) as Box<dyn Updatable>;
+
         Self {
             dimensions,
             buffer_size: dimensions.0 * dimensions.1 * DEPTH,
             keys: [0; 4],
             tx,
             rx,
-            sprites: vec![],
+            sprites: vec![test_sprite],
             mouse_x: 0,
             mouse_y: 0,
-            test_x: 0,
-            test_y: 0,
         }
     }
 
@@ -75,17 +111,6 @@ impl SsrGameEngine {
         }
     }
 
-    #[allow(dead_code)]
-    fn draw_rect(&self, buffer: &mut Vec<u8>, x: usize, y: usize, width: usize, height: usize) {
-        for i in y..y + height {
-            buffer.splice(
-                ((i * self.dimensions().0) + x) * DEPTH
-                    ..((i * self.dimensions().0) + x + width) * DEPTH,
-                vec![124; width * DEPTH],
-            );
-        }
-    }
-
     fn update_user_inputs(&mut self) {
         while let Ok(input) = self.rx.try_recv() {
             self.mouse_x = input.get(0).map_or(self.mouse_x, |x| *x as usize);
@@ -95,6 +120,23 @@ impl SsrGameEngine {
             self.keys[2] = input[4] as usize;
             self.keys[3] = input[5] as usize;
         }
+    }
+}
+
+#[allow(dead_code)]
+fn draw_rect(
+    buffer: &mut Vec<u8>,
+    dimensions: (usize, usize),
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+) {
+    for i in y..y + height {
+        buffer.splice(
+            ((i * dimensions.0) + x) * DEPTH..((i * dimensions.0) + x + width) * DEPTH,
+            vec![124; width * DEPTH],
+        );
     }
 }
 
@@ -128,22 +170,18 @@ impl GameEngine for SsrGameEngine {
     fn render(&mut self) {
         let mut buffer = vec![0_u8; self.buffer_size()];
 
-        self.sprites.iter().for_each(|s| s.render(&mut buffer));
-
-        self.test_x -= self.keys[0];
-        self.test_x += self.keys[2];
-        self.test_y -= self.keys[1];
-        self.test_y += self.keys[3];
+        self.sprites
+            .iter()
+            .for_each(|s| s.render(&mut buffer, self.dimensions()));
 
         self.draw_circle(&mut buffer, self.mouse_x, self.mouse_y, 100);
-        self.draw_rect(&mut buffer, self.test_x, self.test_y, WIDTH, HEIGHT);
 
         let _ = futures::executor::block_on(self.tx.send(buffer));
     }
 
     fn update(&mut self) {
         self.update_user_inputs();
-        self.sprites.iter().for_each(|s| s.update());
+        self.sprites.iter_mut().for_each(|s| s.update(self.keys));
     }
 }
 
