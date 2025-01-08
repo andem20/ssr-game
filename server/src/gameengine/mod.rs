@@ -17,10 +17,6 @@ pub trait GameEngine {
     fn render(&mut self);
 }
 
-pub struct UserInput {
-    keys: [u8; 4],
-}
-
 pub trait Updatables: Send {
     fn update(&self);
     fn render(&self, buffer: &mut Vec<u8>);
@@ -29,7 +25,7 @@ pub trait Updatables: Send {
 pub struct SsrGameEngine {
     dimensions: (usize, usize),
     buffer_size: usize,
-    user_input: UserInput,
+    keys: [u16; 4],
     tx: Sender<Vec<u8>>,
     rx: Receiver<Vec<u16>>,
     sprites: Vec<Box<dyn Updatables>>,
@@ -37,22 +33,12 @@ pub struct SsrGameEngine {
     y: usize,
 }
 
-impl UserInput {
-    pub fn new() -> Self {
-        Self { keys: [0; 4] }
-    }
-
-    pub fn keys(&self) -> [u8; 4] {
-        self.keys
-    }
-}
-
 impl SsrGameEngine {
     pub fn new(dimensions: (usize, usize), tx: Sender<Vec<u8>>, rx: Receiver<Vec<u16>>) -> Self {
         Self {
             dimensions,
             buffer_size: dimensions.0 * dimensions.1 * DEPTH,
-            user_input: UserInput::new(),
+            keys: [0; 4],
             tx,
             rx,
             sprites: vec![],
@@ -63,10 +49,6 @@ impl SsrGameEngine {
 
     pub fn dimensions(&self) -> (usize, usize) {
         self.dimensions
-    }
-
-    pub fn user_input(&self) -> &UserInput {
-        &self.user_input
     }
 
     pub fn buffer_size(&self) -> usize {
@@ -100,10 +82,15 @@ impl SsrGameEngine {
         }
     }
 
-    fn update_cursor_position(&mut self) {
+    fn update_user_inputs(&mut self) {
         while let Ok(input) = self.rx.try_recv() {
+            println!("{:?}", input);
             self.x = input.get(0).map_or(self.x, |x| *x as usize);
             self.y = input.get(1).map_or(self.y, |y| *y as usize);
+            // self.keys[0] = input[2];
+            // self.keys[1] = input[3];
+            // self.keys[2] = input[4];
+            // self.keys[3] = input[5];
         }
     }
 }
@@ -147,7 +134,7 @@ impl GameEngine for SsrGameEngine {
     }
 
     fn update(&mut self) {
-        self.update_cursor_position();
+        self.update_user_inputs();
         self.sprites.iter().for_each(|s| s.update());
     }
 }

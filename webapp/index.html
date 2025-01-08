@@ -42,6 +42,8 @@
             let start = null;
             let messageCount = 0;
 
+            let inputs = new Uint16Array([0, 0, 0, 0, 0, 0]); // mouseX, mouseY, Left, Up, Right, Down
+
             /**
              * @param {MessageEvent<ArrayBuffer>} event
              */
@@ -73,11 +75,26 @@
             canvas.addEventListener(
                 "mousemove",
                 /** @param {MouseEvent} event */ (event) => {
-                    const data = new Uint16Array([
-                        event.pageX - event.currentTarget.offsetLeft,
-                        event.pageY - event.currentTarget.offsetTop,
-                    ]);
-                    socket.send(data);
+                    inputs[0] = event.pageX - event.currentTarget.offsetLeft;
+                    inputs[1] = event.pageY - event.currentTarget.offsetTop;
+                    socket.send(inputs);
+                }
+            );
+
+            document.addEventListener(
+                "keydown",
+                /** @param {KeyboardEvent} event */ (event) => {
+                    inputs[event.keyCode - 35] = 1;
+                    console.log(inputs);
+                    socket.send(inputs);
+                }
+            );
+
+            document.addEventListener(
+                "keyup",
+                /** @param {KeyboardEvent} event */ (event) => {
+                    inputs[event.keyCode - 35] = 0;
+                    socket.send(inputs);
                 }
             );
 

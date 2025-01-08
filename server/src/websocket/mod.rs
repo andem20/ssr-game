@@ -1,4 +1,4 @@
-use std::u16;
+use std::{io::Read, u16};
 
 use actix_web::{
     rt::{self},
@@ -7,6 +7,7 @@ use actix_web::{
 };
 use actix_ws::{Message, MessageStream, Session};
 use futures_util::StreamExt as _;
+use image::EncodableLayout;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::gameengine::{GameEngine, SsrGameEngine};
@@ -41,9 +42,15 @@ fn handle_receive_message(
                     println!("Received text: {}", text);
                 }
                 Ok(Message::Binary(bytes)) => {
-                    let x = *bytes.get(0).unwrap() as u16 | (*bytes.get(1).unwrap() as u16) << 8;
-                    let y = *bytes.get(2).unwrap() as u16 | (*bytes.get(3).unwrap() as u16) << 8;
-                    user_input_tx.send(vec![x, y]).await.unwrap();
+                    let data = bytes
+                        .as_bytes()
+                        .to_vec()
+                        .chunks_exact(2)
+                        .into_iter()
+                        .map(|a| u16::from_ne_bytes([a[0], a[1]]))
+                        .collect::<Vec<u16>>();
+
+                    user_input_tx.send(data).await.unwrap();
                 }
                 Ok(Message::Close(reason)) => {
                     println!("Closing due to {:?}", reason);
