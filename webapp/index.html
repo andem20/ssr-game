@@ -85,7 +85,6 @@
                 "keydown",
                 /** @param {KeyboardEvent} event */ (event) => {
                     inputs[event.keyCode - 35] = 1;
-                    console.log(inputs);
                     socket.send(inputs);
                 }
             );

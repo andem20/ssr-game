@@ -25,12 +25,14 @@ pub trait Updatables: Send {
 pub struct SsrGameEngine {
     dimensions: (usize, usize),
     buffer_size: usize,
-    keys: [u16; 4],
+    keys: [usize; 4],
     tx: Sender<Vec<u8>>,
     rx: Receiver<Vec<u16>>,
     sprites: Vec<Box<dyn Updatables>>,
-    x: usize,
-    y: usize,
+    mouse_x: usize,
+    mouse_y: usize,
+    test_x: usize,
+    test_y: usize,
 }
 
 impl SsrGameEngine {
@@ -42,8 +44,10 @@ impl SsrGameEngine {
             tx,
             rx,
             sprites: vec![],
-            x: 0,
-            y: 0,
+            mouse_x: 0,
+            mouse_y: 0,
+            test_x: 0,
+            test_y: 0,
         }
     }
 
@@ -77,20 +81,19 @@ impl SsrGameEngine {
             buffer.splice(
                 ((i * self.dimensions().0) + x) * DEPTH
                     ..((i * self.dimensions().0) + x + width) * DEPTH,
-                vec![255; width * DEPTH],
+                vec![124; width * DEPTH],
             );
         }
     }
 
     fn update_user_inputs(&mut self) {
         while let Ok(input) = self.rx.try_recv() {
-            println!("{:?}", input);
-            self.x = input.get(0).map_or(self.x, |x| *x as usize);
-            self.y = input.get(1).map_or(self.y, |y| *y as usize);
-            // self.keys[0] = input[2];
-            // self.keys[1] = input[3];
-            // self.keys[2] = input[4];
-            // self.keys[3] = input[5];
+            self.mouse_x = input.get(0).map_or(self.mouse_x, |x| *x as usize);
+            self.mouse_y = input.get(1).map_or(self.mouse_y, |y| *y as usize);
+            self.keys[0] = input[2] as usize;
+            self.keys[1] = input[3] as usize;
+            self.keys[2] = input[4] as usize;
+            self.keys[3] = input[5] as usize;
         }
     }
 }
@@ -127,8 +130,13 @@ impl GameEngine for SsrGameEngine {
 
         self.sprites.iter().for_each(|s| s.render(&mut buffer));
 
-        // self.draw_rect(&mut buffer, 10, 10, WIDTH, HEIGHT);
-        self.draw_circle(&mut buffer, self.x, self.y, 100);
+        self.test_x -= self.keys[0];
+        self.test_x += self.keys[2];
+        self.test_y -= self.keys[1];
+        self.test_y += self.keys[3];
+
+        self.draw_circle(&mut buffer, self.mouse_x, self.mouse_y, 100);
+        self.draw_rect(&mut buffer, self.test_x, self.test_y, WIDTH, HEIGHT);
 
         let _ = futures::executor::block_on(self.tx.send(buffer));
     }
