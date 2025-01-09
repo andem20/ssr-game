@@ -19,6 +19,34 @@ pub trait Updatable: Send {
     fn render(&self, buffer: &mut Vec<u8>, dimensions: (usize, usize));
 }
 
+pub trait Drawable {
+    fn draw_rect(
+        &self,
+        buffer: &mut Vec<u8>,
+        dimensions: (usize, usize),
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+        color: [u8; 4],
+    ) {
+        for i in y..y + height {
+            let mut replacement = color.repeat(width);
+            let range = ((i * dimensions.0) + x) * DEPTH..((i * dimensions.0) + x + width) * DEPTH;
+            let buffer_slice = &buffer[range.clone()];
+
+            for i in (0..replacement.len()).step_by(DEPTH) {
+                replacement[i] += buffer_slice[i];
+                replacement[i + 1] += buffer_slice[i + 1];
+                replacement[i + 2] += buffer_slice[i + 2];
+                replacement[i + 3] += buffer_slice[i + 3];
+            }
+
+            buffer.splice(range, replacement);
+        }
+    }
+}
+
 pub struct TestSprite {
     x: usize,
     y: usize,
@@ -48,7 +76,7 @@ impl Updatable for TestSprite {
     }
 
     fn render(&self, mut buffer: &mut Vec<u8>, dimensions: (usize, usize)) {
-        draw_rect(
+        self.draw_rect(
             &mut buffer,
             dimensions,
             self.x,
@@ -59,6 +87,8 @@ impl Updatable for TestSprite {
         );
     }
 }
+
+impl Drawable for TestSprite {}
 
 pub struct SsrGameEngine {
     dimensions: (usize, usize),
@@ -74,7 +104,7 @@ pub struct SsrGameEngine {
 impl SsrGameEngine {
     pub fn new(dimensions: (usize, usize), tx: Sender<Vec<u8>>, rx: Receiver<Vec<u16>>) -> Self {
         let test_sprite =
-            Box::new(TestSprite::new(0, 0, 50, 20, [255, 0, 0, 255])) as Box<dyn Updatable>;
+            Box::new(TestSprite::new(0, 0, 50, 20, [255, 0, 0, 127])) as Box<dyn Updatable>;
 
         Self {
             dimensions,
@@ -124,25 +154,6 @@ impl SsrGameEngine {
     }
 }
 
-#[allow(dead_code)]
-fn draw_rect(
-    buffer: &mut Vec<u8>,
-    dimensions: (usize, usize),
-    x: usize,
-    y: usize,
-    width: usize,
-    height: usize,
-    color: [u8; 4],
-) {
-    for i in y..y + height {
-        let replacement = color.repeat(width);
-        buffer.splice(
-            ((i * dimensions.0) + x) * DEPTH..((i * dimensions.0) + x + width) * DEPTH,
-            replacement,
-        );
-    }
-}
-
 impl GameEngine for SsrGameEngine {
     fn start(mut self) {
         std::thread::spawn(move || {
@@ -173,11 +184,11 @@ impl GameEngine for SsrGameEngine {
     fn render(&mut self) {
         let mut buffer = vec![0_u8; self.buffer_size()];
 
+        self.draw_circle(&mut buffer, self.mouse_x, self.mouse_y, 100);
+
         self.sprites
             .iter()
             .for_each(|s| s.render(&mut buffer, self.dimensions()));
-
-        self.draw_circle(&mut buffer, self.mouse_x, self.mouse_y, 100);
 
         let _ = futures::executor::block_on(self.tx.send(buffer));
     }
