@@ -55,6 +55,7 @@ impl Updatable for TestSprite {
             self.y,
             self.width,
             self.height,
+            self.color,
         );
     }
 }
@@ -131,11 +132,13 @@ fn draw_rect(
     y: usize,
     width: usize,
     height: usize,
+    color: [u8; 4],
 ) {
     for i in y..y + height {
+        let replacement = color.repeat(width);
         buffer.splice(
             ((i * dimensions.0) + x) * DEPTH..((i * dimensions.0) + x + width) * DEPTH,
-            vec![124; width * DEPTH],
+            replacement,
         );
     }
 }
