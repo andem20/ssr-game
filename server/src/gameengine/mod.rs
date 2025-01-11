@@ -35,11 +35,20 @@ pub trait Drawable {
             let range = ((i * dimensions.0) + x) * DEPTH..((i * dimensions.0) + x + width) * DEPTH;
             let buffer_slice = &buffer[range.clone()];
 
+            // C = (C_1 * A_1 * (255 - A_2) + C_2 * A_2 * 255) >> 16
             for i in (0..replacement.len()).step_by(DEPTH) {
-                replacement[i] += buffer_slice[i];
-                replacement[i + 1] += buffer_slice[i + 1];
-                replacement[i + 2] += buffer_slice[i + 2];
-                replacement[i + 3] += buffer_slice[i + 3];
+                let a_1 = replacement[i + 3] as usize;
+                let a_2 = buffer_slice[i + 3] as usize;
+                replacement[i] = ((buffer_slice[i] as usize * a_2 * (0xFF - a_1)
+                    + replacement[i] as usize * a_1 * 0xFF)
+                    >> 16) as u8;
+                replacement[i + 1] = ((buffer_slice[i + 1] as usize * a_2 * (0xFF - a_1)
+                    + replacement[i + 1] as usize * a_1 * 0xFF)
+                    >> 16) as u8;
+                replacement[i + 2] = ((buffer_slice[i + 2] as usize * a_2 * (0xFF - a_1)
+                    + replacement[i + 2] as usize * a_1 * 0xFF)
+                    >> 16) as u8;
+                replacement[i + 3] = 0xFF;
             }
 
             buffer.splice(range, replacement);
