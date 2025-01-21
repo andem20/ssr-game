@@ -1,5 +1,8 @@
+mod sprite;
+
 use std::time::SystemTime;
 
+use sprite::TestSprite;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 const DEPTH: usize = 4;
@@ -24,80 +27,73 @@ pub trait Drawable {
         &self,
         buffer: &mut Vec<u8>,
         dimensions: (usize, usize),
-        x: usize,
-        y: usize,
+        x: i32,
+        y: i32,
         width: usize,
         height: usize,
         color: [u8; 4],
     ) {
-        for i in y..y + height {
-            let mut replacement = color.repeat(width);
-            let range = ((i * dimensions.0) + x) * DEPTH..((i * dimensions.0) + x + width) * DEPTH;
+        for i in y.max(0) as usize..(y + height as i32).max(0).min(dimensions.1 as i32) as usize {
+            let range = ((i * dimensions.0) + x.max(0) as usize) * DEPTH
+                ..((i * dimensions.0)
+                    + (x + width as i32).max(0).min(dimensions.0 as i32) as usize)
+                    * DEPTH;
+            let mut replacement = color.repeat(range.len() / DEPTH);
             let buffer_slice = &buffer[range.clone()];
 
-            // C = (C_1 * A_1 * (255 - A_2) + C_2 * A_2 * 255) >> 16
             for i in (0..replacement.len()).step_by(DEPTH) {
-                let a_1 = replacement[i + 3] as usize;
-                let a_2 = buffer_slice[i + 3] as usize;
-                replacement[i] = ((buffer_slice[i] as usize * a_2 * (0xFF - a_1)
-                    + replacement[i] as usize * a_1 * 0xFF)
-                    >> 16) as u8;
-                replacement[i + 1] = ((buffer_slice[i + 1] as usize * a_2 * (0xFF - a_1)
-                    + replacement[i + 1] as usize * a_1 * 0xFF)
-                    >> 16) as u8;
-                replacement[i + 2] = ((buffer_slice[i + 2] as usize * a_2 * (0xFF - a_1)
-                    + replacement[i + 2] as usize * a_1 * 0xFF)
-                    >> 16) as u8;
-                replacement[i + 3] = 0xFF;
+                let a1 = buffer_slice[i + 3] as u32;
+                let a2 = replacement[i + 3] as u32;
+                replacement[i] = calc_color(buffer_slice[i], replacement[i], a1, a2);
+                replacement[i + 1] = calc_color(buffer_slice[i + 1], replacement[i + 1], a1, a2);
+                replacement[i + 2] = calc_color(buffer_slice[i + 2], replacement[i + 2], a1, a2);
+                replacement[i + 3] = 0xff;
             }
 
             buffer.splice(range, replacement);
         }
     }
-}
 
-pub struct TestSprite {
-    x: usize,
-    y: usize,
-    width: usize,
-    height: usize,
-    color: [u8; 4],
-}
+    #[allow(dead_code)]
+    fn draw_circle(
+        &self,
+        buffer: &mut Vec<u8>,
+        dimensions: (usize, usize),
+        x: i32,
+        y: i32,
+        radius: usize,
+    ) {
+        let range =
+            y.max(0) as usize..(y + (radius as i32) * 2).max(0).min(dimensions.1 as i32) as usize;
 
-impl TestSprite {
-    pub fn new(x: usize, y: usize, width: usize, height: usize, color: [u8; 4]) -> Self {
-        Self {
-            x,
-            y,
-            width,
-            height,
-            color,
+        let start = range.start;
+
+        for i in range {
+            let angle = f64::asin((i as i32 - y).abs_diff(radius as i32) as f64 / radius as f64);
+            let point_x = (f64::cos(angle) * radius as f64) as usize;
+
+            let row = (i * dimensions.0) as i32;
+            let start = (row
+                + (x - point_x as i32 + radius as i32)
+                    .min(dimensions.0 as i32)
+                    .max(0)) as usize
+                * DEPTH;
+            let end = (row
+                + (x + point_x as i32 + radius as i32)
+                    .min(dimensions.0 as i32)
+                    .max(0)) as usize
+                * DEPTH;
+
+            let filling = vec![255; (start..end).len()];
+
+            buffer.splice(start..end, filling);
         }
     }
 }
 
-impl Updatable for TestSprite {
-    fn update(&mut self, inputs: [usize; 4]) {
-        self.x -= inputs[0];
-        self.x += inputs[2];
-        self.y -= inputs[1];
-        self.y += inputs[3];
-    }
-
-    fn render(&self, mut buffer: &mut Vec<u8>, dimensions: (usize, usize)) {
-        self.draw_rect(
-            &mut buffer,
-            dimensions,
-            self.x,
-            self.y,
-            self.width,
-            self.height,
-            self.color,
-        );
-    }
+fn calc_color(c1: u8, c2: u8, a1: u32, a2: u32) -> u8 {
+    return ((c1 as u32 * a1 * (0xff - a2) + c2 as u32 * a2 * 0xff) >> 16) as u8;
 }
-
-impl Drawable for TestSprite {}
 
 pub struct SsrGameEngine {
     dimensions: (usize, usize),
@@ -133,22 +129,6 @@ impl SsrGameEngine {
 
     pub fn buffer_size(&self) -> usize {
         self.buffer_size
-    }
-
-    #[allow(dead_code)]
-    fn draw_circle(&self, buffer: &mut Vec<u8>, x: usize, y: usize, radius: usize) {
-        for i in 0..radius * 2 {
-            let angle = f64::asin(i.abs_diff(radius) as f64 / radius as f64);
-            let point_x = (f64::cos(angle) * radius as f64) as usize;
-
-            let filling = vec![255; point_x * 2 * DEPTH];
-
-            let position = ((y + i) * self.dimensions().0) + x;
-            let start = (position - point_x) * DEPTH;
-            let end = (position + point_x) * DEPTH;
-
-            buffer.splice(start..end, filling);
-        }
     }
 
     fn update_user_inputs(&mut self) {
@@ -192,8 +172,6 @@ impl GameEngine for SsrGameEngine {
 
     fn render(&mut self) {
         let mut buffer = vec![0_u8; self.buffer_size()];
-
-        self.draw_circle(&mut buffer, self.mouse_x, self.mouse_y, 100);
 
         self.sprites
             .iter()
