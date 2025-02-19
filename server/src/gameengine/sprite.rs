@@ -39,7 +39,16 @@ impl Updatable for TestSprite {
         //     self.color,
         // );
 
-        self.draw_circle(&mut buffer, dimensions, self.x, self.y, 100);
+        // self.draw_circle(&mut buffer, dimensions, self.x, self.y, 100);
+        self.draw_rect(
+            &mut buffer,
+            dimensions,
+            self.x,
+            self.y,
+            100,
+            100,
+            self.color,
+        );
     }
 }
 

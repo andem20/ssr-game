@@ -34,10 +34,9 @@ pub trait Drawable {
         color: [u8; 4],
     ) {
         for i in y.max(0) as usize..(y + height as i32).max(0).min(dimensions.1 as i32) as usize {
-            let range = ((i * dimensions.0) + x.max(0) as usize) * DEPTH
-                ..((i * dimensions.0)
-                    + (x + width as i32).max(0).min(dimensions.0 as i32) as usize)
-                    * DEPTH;
+            let row = i * dimensions.0;
+            let range = (row + x.max(0) as usize) * DEPTH
+                ..(row + (x + width as i32).max(0).min(dimensions.0 as i32) as usize) * DEPTH;
             let mut replacement = color.repeat(range.len() / DEPTH);
             let buffer_slice = &buffer[range.clone()];
 
@@ -61,28 +60,20 @@ pub trait Drawable {
         dimensions: (usize, usize),
         x: i32,
         y: i32,
-        radius: usize,
+        radius: i32,
     ) {
-        let range =
-            y.max(0) as usize..(y + (radius as i32) * 2).max(0).min(dimensions.1 as i32) as usize;
-
-        let start = range.start;
+        let width = dimensions.0 as i32;
+        let height = dimensions.1 as i32;
+        let end = (y + radius * 2).max(0).min(height);
+        let range = y.max(0)..end;
 
         for i in range {
-            let angle = f64::asin((i as i32 - y).abs_diff(radius as i32) as f64 / radius as f64);
-            let point_x = (f64::cos(angle) * radius as f64) as usize;
+            let angle = f64::asin((i - y).abs_diff(radius) as f64 / radius as f64);
+            let point_x = (f64::cos(angle) * radius as f64) as i32;
 
-            let row = (i * dimensions.0) as i32;
-            let start = (row
-                + (x - point_x as i32 + radius as i32)
-                    .min(dimensions.0 as i32)
-                    .max(0)) as usize
-                * DEPTH;
-            let end = (row
-                + (x + point_x as i32 + radius as i32)
-                    .min(dimensions.0 as i32)
-                    .max(0)) as usize
-                * DEPTH;
+            let row = i * width;
+            let start = (row + (x - point_x + radius).min(width).max(0)) as usize * DEPTH;
+            let end = (row + (x + point_x + radius).min(width).max(0)) as usize * DEPTH;
 
             let filling = vec![255; (start..end).len()];
 
@@ -135,10 +126,10 @@ impl SsrGameEngine {
         while let Ok(input) = self.rx.try_recv() {
             self.mouse_x = input.get(0).map_or(self.mouse_x, |x| *x as usize);
             self.mouse_y = input.get(1).map_or(self.mouse_y, |y| *y as usize);
-            self.keys[0] = input[2] as usize;
-            self.keys[1] = input[3] as usize;
-            self.keys[2] = input[4] as usize;
-            self.keys[3] = input[5] as usize;
+            self.keys[0] = input[2] as usize * 4;
+            self.keys[1] = input[3] as usize * 4;
+            self.keys[2] = input[4] as usize * 4;
+            self.keys[3] = input[5] as usize * 4;
         }
     }
 }
